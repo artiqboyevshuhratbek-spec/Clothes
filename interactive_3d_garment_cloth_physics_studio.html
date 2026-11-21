@@ -1,0 +1,2366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>3D Garment &amp; Cloth Physics Studio</title>
+  <!-- Tailwind CSS for modern responsive studio UI -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js r128 for real-time WebGL 3D rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Inter font for crisp UI typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0b0c10;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #f3f4f6;
+      user-select: none;
+    }
+    #viewport {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+      cursor: grab;
+    }
+    #viewport.dragging-orbit {
+      cursor: grabbing;
+    }
+    #viewport.hover-garment {
+      cursor: pointer;
+    }
+    #viewport.dragging-garment {
+      cursor: grabbing;
+    }
+    /* Custom subtle range slider styling */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(255, 255, 255, 0.14);
+      height: 4px;
+      border-radius: 999px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #f8fafc;
+      border: 2px solid #18181b;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.45);
+      cursor: pointer;
+      transition: transform 0.12s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+    .glass-panel {
+      background: rgba(15, 17, 23, 0.72);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    /* Custom scrollbar for mobile panel overflow */
+    .custom-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Fullscreen WebGL 3D Canvas Container -->
+  <div id="viewport" aria-label="Interactive 3D Garment Physics Viewport"></div>
+
+  <!-- Top-Left Brand & Live Telemetry Header -->
+  <header class="fixed top-3 left-3 sm:top-5 sm:left-5 z-20 pointer-events-none flex flex-col gap-2 max-w-[calc(100vw-6rem)]">
+    <div class="glass-panel pointer-events-auto rounded-2xl px-4 py-3 shadow-2xl">
+      <div class="flex items-center gap-2.5">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
+        <h1 class="text-sm sm:text-base font-semibold tracking-tight text-white">Atelier 3D Cloth &amp; Nylon Physics</h1>
+        <span id="fps-badge" class="ml-auto text-[11px] font-mono text-zinc-400 bg-white/5 px-2 py-0.5 rounded-md">60 FPS</span>
+      </div>
+      <p class="text-[11px] sm:text-xs text-zinc-400 mt-1 leading-relaxed">
+        Drag <span class="text-zinc-200 font-medium">stockings</span> to stretch or slide &bull; Drag <span class="text-zinc-200 font-medium">skirt</span> to lift &amp; sway &bull; Drag background to orbit.
+      </p>
+    </div>
+  </header>
+
+  <!-- Mobile / Desktop Control Drawer Toggle Button -->
+  <button id="toggle-panel-btn"
+    class="fixed top-3 right-3 sm:top-5 sm:right-5 z-30 glass-panel rounded-xl px-3 py-2.5 text-xs font-medium text-zinc-100 hover:bg-white/10 active:scale-95 transition flex items-center gap-2 shadow-xl"
+    title="Toggle Studio Controls">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+    </svg>
+    <span class="hidden sm:inline">Controls</span>
+  </button>
+
+  <!-- Right-Side Interactive Studio Control Panel -->
+  <aside id="control-panel"
+    class="fixed top-16 right-3 sm:top-20 sm:right-5 z-20 w-[calc(100vw-1.5rem)] sm:w-80 max-h-[calc(100vh-6rem)] overflow-y-auto custom-scroll glass-panel rounded-2xl p-4 shadow-2xl transition-all duration-200 flex flex-col gap-4">
+
+    <!-- Interaction Mode Selector -->
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-[11px] uppercase tracking-wider font-semibold text-zinc-400">Interaction Mode</span>
+        <span id="active-target-pill" class="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-zinc-300">Auto Detect</span>
+      </div>
+      <div class="grid grid-cols-4 gap-1.5 bg-black/30 p-1 rounded-xl border border-white/5">
+        <button data-mode="auto" class="mode-btn py-1.5 rounded-lg text-[11px] font-medium bg-white text-zinc-950 transition">Auto</button>
+        <button data-mode="stockings" class="mode-btn py-1.5 rounded-lg text-[11px] font-medium text-zinc-300 hover:bg-white/10 transition">Nylon</button>
+        <button data-mode="skirt" class="mode-btn py-1.5 rounded-lg text-[11px] font-medium text-zinc-300 hover:bg-white/10 transition">Skirt</button>
+        <button data-mode="orbit" class="mode-btn py-1.5 rounded-lg text-[11px] font-medium text-zinc-300 hover:bg-white/10 transition">Orbit</button>
+      </div>
+    </div>
+
+    <!-- Stockings Section -->
+    <div class="border-t border-white/10 pt-3.5 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] uppercase tracking-wider font-semibold text-zinc-400">Sheer Nylon Stockings</span>
+        <div class="flex gap-1 bg-black/30 p-0.5 rounded-lg border border-white/5">
+          <button data-hosiery="thigh" class="hosiery-btn px-2 py-0.5 rounded-md text-[10px] font-medium bg-white/15 text-white">Thigh-High</button>
+          <button data-hosiery="pantyhose" class="hosiery-btn px-2 py-0.5 rounded-md text-[10px] font-medium text-zinc-400 hover:text-white">Full Sheer</button>
+        </div>
+      </div>
+
+      <!-- Denier / Opacity Slider -->
+      <div class="flex flex-col gap-1.5">
+        <div class="flex justify-between text-xs">
+          <span class="text-zinc-300">Sheerness (Denier)</span>
+          <span id="denier-val" class="font-mono text-zinc-400">20D</span>
+        </div>
+        <input id="denier-slider" type="range" min="10" max="60" value="20" step="1" class="w-full" />
+      </div>
+
+      <!-- Nylon Sheen Slider -->
+      <div class="flex flex-col gap-1.5">
+        <div class="flex justify-between text-xs">
+          <span class="text-zinc-300">Anisotropic Sheen</span>
+          <span id="sheen-val" class="font-mono text-zinc-400">75%</span>
+        </div>
+        <input id="sheen-slider" type="range" min="15" max="100" value="75" step="1" class="w-full" />
+      </div>
+
+      <!-- Quick Stocking Actions -->
+      <div class="grid grid-cols-2 gap-2">
+        <button id="btn-remove-stockings" class="py-2 px-3 rounded-xl text-xs font-medium bg-white/5 hover:bg-white/15 border border-white/10 transition active:scale-95">
+          Slide Off
+        </button>
+        <button id="btn-reapply-stockings" class="py-2 px-3 rounded-xl text-xs font-medium bg-white/10 hover:bg-white/20 border border-white/15 transition active:scale-95">
+          Reapply Smoothly
+        </button>
+      </div>
+    </div>
+
+    <!-- Skirt Section -->
+    <div class="border-t border-white/10 pt-3.5 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] uppercase tracking-wider font-semibold text-zinc-400">Fitted Skirt</span>
+        <div class="flex gap-1 bg-black/30 p-0.5 rounded-lg border border-white/5">
+          <button data-length="mini" class="length-btn px-2 py-0.5 rounded-md text-[10px] font-medium bg-white/15 text-white">Mini</button>
+          <button data-length="knee" class="length-btn px-2 py-0.5 rounded-md text-[10px] font-medium text-zinc-400 hover:text-white">Knee</button>
+        </div>
+      </div>
+
+      <!-- Skirt Size Selector -->
+      <div class="flex flex-col gap-1.5">
+        <div class="flex justify-between text-xs">
+          <span class="text-zinc-300">Skirt Size</span>
+          <span id="skirt-size-val" class="font-mono text-zinc-400">M (Fitted)</span>
+        </div>
+        <div class="grid grid-cols-5 gap-1 bg-black/30 p-1 rounded-xl border border-white/5">
+          <button data-size="XS" class="size-btn py-1 rounded-lg text-[11px] font-medium text-zinc-300 hover:bg-white/10 transition">XS</button>
+          <button data-size="S" class="size-btn py-1 rounded-lg text-[11px] font-medium text-zinc-300 hover:bg-white/10 transition">S</button>
+          <button data-size="M" class="size-btn py-1 rounded-lg text-[11px] font-medium bg-white text-zinc-950 transition">M</button>
+          <button data-size="L" class="size-btn py-1 rounded-lg text-[11px] font-medium text-zinc-300 hover:bg-white/10 transition">L</button>
+          <button data-size="XL" class="size-btn py-1 rounded-lg text-[11px] font-medium text-zinc-300 hover:bg-white/10 transition">XL</button>
+        </div>
+      </div>
+
+      <!-- Fabric Type Selector -->
+      <div class="grid grid-cols-3 gap-1.5">
+        <button data-fabric="polyester" class="fabric-btn py-1.5 rounded-lg text-[11px] font-medium bg-white/15 text-white border border-white/15 transition">Polyester</button>
+        <button data-fabric="wool" class="fabric-btn py-1.5 rounded-lg text-[11px] font-medium text-zinc-300 bg-white/5 hover:bg-white/10 border border-white/5 transition">Wool Blend</button>
+        <button data-fabric="cotton" class="fabric-btn py-1.5 rounded-lg text-[11px] font-medium text-zinc-300 bg-white/5 hover:bg-white/10 border border-white/5 transition">Cotton</button>
+      </div>
+
+      <!-- Skirt Color Swatches -->
+      <div class="flex items-center justify-between">
+        <span class="text-xs text-zinc-300">Fabric Color</span>
+        <div class="flex items-center gap-2">
+          <button data-color="#191b22" class="color-swatch w-5 h-5 rounded-full ring-2 ring-white ring-offset-2 ring-offset-zinc-900" style="background:#191b22" title="Obsidian Charcoal"></button>
+          <button data-color="#4c1623" class="color-swatch w-5 h-5 rounded-full ring-1 ring-white/20 hover:scale-110 transition" style="background:#4c1623" title="Deep Burgundy"></button>
+          <button data-color="#1c2b45" class="color-swatch w-5 h-5 rounded-full ring-1 ring-white/20 hover:scale-110 transition" style="background:#1c2b45" title="Midnight Navy"></button>
+          <button data-color="#8b7765" class="color-swatch w-5 h-5 rounded-full ring-1 ring-white/20 hover:scale-110 transition" style="background:#8b7765" title="Warm Taupe"></button>
+        </div>
+      </div>
+
+      <!-- Skirt Lift & Reset Controls -->
+      <div class="grid grid-cols-2 gap-2">
+        <button id="btn-sway-skirt" class="py-2 px-3 rounded-xl text-xs font-medium bg-white/5 hover:bg-white/15 border border-white/10 transition active:scale-95">
+          Gentle Sway
+        </button>
+        <button id="btn-reset-skirt" class="py-2 px-3 rounded-xl text-xs font-medium bg-white/10 hover:bg-white/20 border border-white/15 transition active:scale-95">
+          Reset Skirt
+        </button>
+      </div>
+    </div>
+
+    <!-- Physics Environment Section -->
+    <div class="border-t border-white/10 pt-3.5 flex flex-col gap-3">
+      <span class="text-[11px] uppercase tracking-wider font-semibold text-zinc-400">Physics &amp; Studio Wind</span>
+
+      <div class="flex flex-col gap-1.5">
+        <div class="flex justify-between text-xs">
+          <span class="text-zinc-300">Studio Breeze</span>
+          <span id="wind-val" class="font-mono text-zinc-400">15%</span>
+        </div>
+        <input id="wind-slider" type="range" min="0" max="100" value="15" step="1" class="w-full" />
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        <div class="flex justify-between text-xs">
+          <span class="text-zinc-300">Gravity Scale</span>
+          <span id="gravity-val" class="font-mono text-zinc-400">1.0x</span>
+        </div>
+        <input id="gravity-slider" type="range" min="0.2" max="1.8" value="1.0" step="0.1" class="w-full" />
+      </div>
+
+      <!-- Master Reset Button -->
+      <button id="btn-reset-all"
+        class="mt-1 w-full py-2.5 rounded-xl text-xs font-semibold tracking-wide bg-white text-zinc-950 hover:bg-zinc-200 active:scale-[0.98] transition shadow-lg">
+        Reset Everything &amp; Camera
+      </button>
+    </div>
+  </aside>
+
+  <!-- Subtle Bottom-Center Status Toast (replaces any alert/confirm) -->
+  <div id="status-toast"
+    class="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-4 py-2 text-xs text-zinc-200 opacity-0 pointer-events-none transition-opacity duration-300 shadow-xl">
+    Ready
+  </div>
+
+  <script>
+    /**
+     * ============================================================================
+     * ATELIER 3D GARMENT & CLOTH PHYSICS STUDIO
+     * Self-contained Three.js WebGL simulation featuring:
+     * 1. Parametric anatomical leg & hip geometry + exact analytical collision SDF
+     * 2. Custom GLSL Skin Subsurface Scattering (SSS) shader
+     * 3. Custom GLSL Anisotropic Sheer Nylon Stockings shader with micro-weave
+     * 4. Real-time Elastic Sleeve Solver for stockings (pull, stretch, rebound, slide & wrinkles)
+     * 5. Real-time Verlet Cloth Solver for the fitted skirt with leg collision & wind
+     * ============================================================================
+     */
+
+    (function () {
+      'use strict';
+
+      // Global simulation state
+      const state = {
+        mode: 'auto',              // 'auto' | 'stockings' | 'skirt' | 'orbit'
+        hosieryStyle: 'thigh',     // 'thigh' | 'pantyhose'
+        denier: 20,                // 10 to 60
+        sheen: 0.75,               // 0.15 to 1.0
+        skirtLength: 'mini',       // 'mini' | 'knee'
+        skirtSize: 'M',            // 'XS' | 'S' | 'M' | 'L' | 'XL'
+        skirtFabric: 'polyester',  // 'polyester' | 'wool' | 'cotton'
+        skirtColor: '#191b22',
+        windStrength: 0.15,        // 0.0 to 1.0
+        gravityScale: 1.0,         // 0.2 to 1.8
+        stockingTargetTop: 0.80,   // Target top height of stockings (0.80 = thigh-high, 0.96 = full)
+        stockingAutoAnim: false,
+        panelOpen: window.innerWidth >= 640
+      };
+
+      // Three.js core references
+      let scene, camera, renderer, viewportEl;
+      let clock = new THREE.Clock();
+      let raycaster = new THREE.Raycaster();
+      let pointer = new THREE.Vector2();
+
+      // Camera orbit spherical coordinates
+      const camCtrl = {
+        theta: 0.28,
+        phi: 1.38,
+        radius: 1.88,
+        target: new THREE.Vector3(0, 0.64, 0),
+        targetTheta: 0.28,
+        targetPhi: 1.38,
+        targetRadius: 1.88,
+        isOrbiting: false,
+        lastX: 0,
+        lastY: 0
+      };
+
+      // Scene objects & physics solvers
+      let legMeshes = [];
+      let stockingSolvers = [];
+      let skirtSolver = null;
+      let lights = {};
+
+      // Active pointer drag interaction state
+      const dragState = {
+        active: false,
+        type: null,          // 'orbit' | 'skirt' | 'stocking'
+        stockingIndex: -1,
+        vertexIndex: -1,
+        grabPlane: new THREE.Plane(),
+        grabPoint: new THREE.Vector3(),
+        startPoint: new THREE.Vector3(),
+        currentPoint: new THREE.Vector3(),
+        skirtIndices: [],
+        skirtWeights: []
+      };
+
+      // FPS counter state
+      let frameCount = 0;
+      let fpsAccum = 0;
+
+      // Utility: Show non-blocking toast message
+      let toastTimeout = null;
+      function showToast(msg) {
+        const el = document.getElementById('status-toast');
+        if (!el) return;
+        el.textContent = msg;
+        el.style.opacity = '1';
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+          el.style.opacity = '0';
+        }, 2100);
+      }
+
+      // Utility: Smooth Hermite interpolation
+      function smoothstep(edge0, edge1, x) {
+        const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+        return t * t * (3 - 2 * t);
+      }
+
+      function gauss(x, mu, sigma) {
+        const d = (x - mu) / sigma;
+        return Math.exp(-0.5 * d * d);
+      }
+
+      /**
+       * ========================================================================
+       * 1. ANALYTICAL ANATOMICAL GEOMETRY & COLLISION FIELD
+       * Shared by the visual leg meshes, stocking solver, and skirt cloth solver
+       * to guarantee zero interpenetration and smooth sliding friction.
+       * ========================================================================
+       */
+
+      /**
+       * Returns centerline (cx, cz) for left (side = -1) or right (side = +1) leg at height y in [0.06, 0.94]
+       */
+      function getLegCenter(side, y) {
+        // Gentle editorial contrapposto stance: slight graceful taper toward ankles
+        const hipX = side * 0.106;
+        const ankleX = side * 0.082;
+        const t = smoothstep(0.08, 0.90, y);
+        // Subtle natural curve through knee and calf
+        const kneeShift = side * 0.008 * gauss(y, 0.50, 0.14);
+        const cx = ankleX + (hipX - ankleX) * Math.pow(t, 0.85) + kneeShift;
+
+        // Slight natural S-curve in Z (anterior thigh, posterior calf) + tiny stance asymmetry
+        const stanceZ = side > 0 ? 0.016 * smoothstep(0.85, 0.08, y) : -0.012 * smoothstep(0.85, 0.08, y);
+        const kneeCurveZ = 0.014 * gauss(y, 0.52, 0.14) - 0.016 * gauss(y, 0.34, 0.13);
+        const cz = stanceZ + kneeCurveZ;
+        return { x: cx, z: cz };
+      }
+
+      /**
+       * Returns cross-sectional radius of the leg at height y and azimuth angle theta.
+       * theta = 0 is +X (right), PI/2 is +Z (front), PI is -X (left), 3PI/2 is -Z (back).
+       */
+      function getLegRadius(side, y, theta) {
+        // Base anatomical profile along height y (meters, total figure waist at y=1.18)
+        let baseR = 0.036; // ankle base
+        // Subtle ankle malleolus flare
+        baseR += 0.004 * gauss(y, 0.10, 0.03);
+        // Sculpted calf muscle (gastrocnemius & soleus)
+        baseR += 0.025 * gauss(y, 0.35, 0.10);
+        // Taper just above calf into knee
+        baseR += 0.021 * smoothstep(0.32, 0.54, y);
+        // Knee contour refinement
+        baseR -= 0.004 * gauss(y, 0.49, 0.045);
+        // Smooth thigh expansion (quadriceps + hamstrings)
+        baseR += 0.039 * smoothstep(0.50, 0.88, y);
+        // Upper thigh fullness
+        baseR += 0.009 * gauss(y, 0.83, 0.09);
+
+        // Directional anatomical muscle sculpting around circumference
+        const sinT = Math.sin(theta); // +1 front (+Z), -1 back (-Z)
+        const cosT = Math.cos(theta); // +1 right (+X), -1 left (-X)
+        const lateral = cosT * side;  // +1 outer side, -1 inner side
+
+        let mod = 1.0;
+
+        // Calf muscle fullness at the back & slight outer/inner contour
+        const calfZone = gauss(y, 0.35, 0.095);
+        mod += calfZone * (-0.13 * sinT + 0.05 * Math.cos(2 * theta));
+
+        // Shinbone (tibia) sleeker front ridge
+        const shinZone = gauss(y, 0.28, 0.10);
+        mod -= shinZone * 0.055 * Math.max(0, sinT);
+
+        // Patella (knee cap) subtle forward contour & back popliteal hollow
+        const kneeZone = gauss(y, 0.51, 0.045);
+        mod += kneeZone * (0.06 * Math.max(0, sinT) - 0.07 * Math.max(0, -sinT));
+
+        // Thigh quadriceps front curve, hamstring rear curve, outer hip/thigh sweep
+        const thighZone = smoothstep(0.54, 0.78, y);
+        mod += thighZone * (0.08 * Math.max(0, sinT) + 0.07 * Math.max(0, -sinT) + 0.05 * Math.max(0, lateral));
+
+        // Gentle flattening on upper inner thigh so legs sit naturally side by side without overlapping
+        const innerThigh = smoothstep(0.70, 0.90, y) * Math.max(0, -lateral);
+        mod -= innerThigh * 0.13;
+
+        // Ankle tendon tapering at the back (Achilles)
+        const ankleZone = gauss(y, 0.12, 0.055);
+        mod += ankleZone * (0.08 * sinT - 0.06 * Math.abs(cosT));
+
+        return Math.max(0.025, baseR * mod);
+      }
+
+      /**
+       * Evaluates 3D surface point and outward normal on a leg at (side, y, theta)
+       */
+      function evaluateLegPoint(side, y, theta, radialOffset = 0) {
+        const c = getLegCenter(side, y);
+        const r = getLegRadius(side, y, theta) + radialOffset;
+        return new THREE.Vector3(
+          c.x + Math.cos(theta) * r,
+          y,
+          c.z + Math.sin(theta) * r
+        );
+      }
+
+      /**
+       * Returns pelvis/hip/waist cross-sectional radii (rx, rz) and center Z for y in [0.85, 1.24]
+       */
+      function getTorsoProfile(y, theta) {
+        // Width (X) peaks at hips (y=0.95) and narrows smoothly to waist (y=1.18)
+        let rx = 0.172 * gauss(y, 0.94, 0.15) + 0.118 * smoothstep(0.95, 1.24, y);
+        // Blend smoothly down into upper thighs
+        rx = 0.194 - 0.068 * smoothstep(0.94, 1.18, y) + 0.015 * gauss(y, 0.96, 0.07);
+        // Depth (Z)
+        let rz = 0.114 - 0.028 * smoothstep(0.94, 1.18, y) + 0.020 * gauss(y, 0.94, 0.075);
+
+        const sinT = Math.sin(theta);
+        const cosT = Math.cos(theta);
+
+        // Natural gluteal contour at the back (-Z) around y=0.92
+        const backCurve = gauss(y, 0.92, 0.08) * Math.max(0, -sinT);
+        // Subtle abdominal flatness at the front (+Z)
+        const frontFlatten = smoothstep(0.92, 1.16, y) * Math.max(0, sinT);
+        // Subtle lower-back arch
+        const lumbarCurve = gauss(y, 1.12, 0.07) * Math.max(0, -sinT);
+
+        const rBase = (rx * rz) / Math.sqrt(Math.pow(rz * cosT, 2) + Math.pow(rx * sinT, 2));
+        let r = rBase;
+        r += backCurve * 0.028;
+        r -= frontFlatten * 0.008;
+        r -= lumbarCurve * 0.014;
+
+        // Slight center Z shift for natural pelvic posture
+        const cz = -0.008 * gauss(y, 0.94, 0.08) + 0.008 * gauss(y, 1.12, 0.08);
+        return { r, cz };
+      }
+
+      /**
+       * ========================================================================
+       * 2. PROCEDURAL HIGH-RES TEXTURES & CUSTOM GLSL SHADERS
+       * No external image URLs - generated procedurally in-memory for instant load.
+       * ========================================================================
+       */
+
+      /**
+       * Generates subtle photorealistic skin albedo + fine pore roughness canvas textures
+       */
+      function createSkinTextures() {
+        const size = 512;
+        const albedoCanvas = document.createElement('canvas');
+        albedoCanvas.width = size;
+        albedoCanvas.height = size;
+        const ctx = albedoCanvas.getContext('2d');
+
+        // Warm natural skin undertone gradient
+        const grad = ctx.createLinearGradient(0, 0, 0, size);
+        grad.addColorStop(0.0, '#d8a68d');
+        grad.addColorStop(0.45, '#deb098');
+        grad.addColorStop(0.75, '#d9a78e');
+        grad.addColorStop(1.0, '#cfa089');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, size, size);
+
+        // Organic micro-mottling (subdermal warmth & fine skin variation)
+        for (let i = 0; i < 4200; i++) {
+          const x = Math.random() * size;
+          const y = Math.random() * size;
+          const rad = 1 + Math.random() * 5.5;
+          const warm = Math.random() > 0.45;
+          ctx.fillStyle = warm
+            ? `rgba(215, 138, 114, ${0.018 + Math.random() * 0.02})`
+            : `rgba(248, 215, 195, ${0.016 + Math.random() * 0.02})`;
+          ctx.beginPath();
+          ctx.arc(x, y, rad, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Ultra-fine pores
+        for (let i = 0; i < 12000; i++) {
+          const x = Math.random() * size;
+          const y = Math.random() * size;
+          ctx.fillStyle = `rgba(145, 92, 74, ${0.03 * Math.random()})`;
+          ctx.fillRect(x, y, 1, 1);
+        }
+
+        const tex = new THREE.CanvasTexture(albedoCanvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(2, 3);
+        tex.encoding = THREE.sRGBEncoding;
+        return tex;
+      }
+
+      /**
+       * Generates procedural woven fabric bump/normal canvas texture for skirt materials
+       */
+      function createFabricTexture(type) {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(0, 0, size, size);
+
+        if (type === 'polyester') {
+          // Fine satin-twill diagonal weave
+          ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+          ctx.lineWidth = 1;
+          for (let i = -size; i < size * 2; i += 3) {
+            ctx.beginPath();
+            ctx.moveTo(i, 0);
+            ctx.lineTo(i + size, size);
+            ctx.stroke();
+          }
+        } else if (type === 'wool') {
+          // Rich brushed wool tweed weave
+          for (let y = 0; y < size; y += 4) {
+            for (let x = 0; x < size; x += 4) {
+              const v = ((x + y) % 8 === 0) ? 165 : 95;
+              const jitter = (Math.random() - 0.5) * 35;
+              const c = Math.max(40, Math.min(220, v + jitter));
+              ctx.fillStyle = `rgb(${c},${c},${c})`;
+              ctx.fillRect(x, y, 3, 3);
+            }
+          }
+        } else {
+          // Crisp plain-weave cotton
+          for (let y = 0; y < size; y += 2) {
+            for (let x = 0; x < size; x += 2) {
+              const alt = ((x / 2 + y / 2) % 2 === 0) ? 148 : 112;
+              const c = alt + (Math.random() - 0.5) * 14;
+              ctx.fillStyle = `rgb(${c},${c},${c})`;
+              ctx.fillRect(x, y, 2, 2);
+            }
+          }
+        }
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(10, 6);
+        return tex;
+      }
+
+      /**
+       * Custom GLSL Subsurface-Scattering Skin Material
+       * Produces warm, natural skin shading with wrap diffuse, peach SSS glow, and dual-lobe soft specular.
+       */
+      function createSkinShaderMaterial(skinTex) {
+        return new THREE.ShaderMaterial({
+          uniforms: {
+            uMap: { value: skinTex },
+            uKeyLightPos: { value: new THREE.Vector3(2.2, 2.4, 2.4) },
+            uFillLightPos: { value: new THREE.Vector3(-2.4, 1.4, 1.6) },
+            uRimLightPos: { value: new THREE.Vector3(-1.4, 2.1, -2.5) },
+            uStockingTopL: { value: 0.80 },
+            uStockingTopR: { value: 0.80 },
+            uHosieryStyle: { value: 0.0 } // 0 = thigh-high (shows subtle compression band shadow), 1 = full
+          },
+          vertexShader: `
+            varying vec3 vNormal;
+            varying vec3 vWorldPos;
+            varying vec2 vUv;
+            void main() {
+              vUv = uv;
+              vec4 worldPos = modelMatrix * vec4(position, 1.0);
+              vWorldPos = worldPos.xyz;
+              vNormal = normalize(mat3(modelMatrix) * normal);
+              gl_Position = projectionMatrix * viewMatrix * worldPos;
+            }
+          `,
+          fragmentShader: `
+            uniform sampler2D uMap;
+            uniform vec3 uKeyLightPos;
+            uniform vec3 uFillLightPos;
+            uniform vec3 uRimLightPos;
+            uniform float uStockingTopL;
+            uniform float uStockingTopR;
+            uniform float uHosieryStyle;
+
+            varying vec3 vNormal;
+            varying vec3 vWorldPos;
+            varying vec2 vUv;
+
+            void main() {
+              vec3 N = normalize(vNormal);
+              vec3 V = normalize(cameraPosition - vWorldPos);
+              vec3 albedo = texture2D(uMap, vUv * vec2(2.0, 3.0)).rgb;
+
+              // Subtle anatomical ambient occlusion near inner thighs & ankle creases
+              float innerAO = smoothstep(0.01, 0.09, abs(vWorldPos.x)) * 0.12 + 0.88;
+              albedo *= innerAO;
+
+              // Subtle skin compression shadow line right where the thigh-high elastic cuff hugs the leg
+              float topY = vWorldPos.x < 0.0 ? uStockingTopL : uStockingTopR;
+              if (uHosieryStyle < 0.5 && topY > 0.14) {
+                float distToBand = abs(vWorldPos.y - topY);
+                float compressionDarken = exp(-pow(distToBand / 0.011, 2.0)) * 0.11;
+                // Warm slight flush right above elastic band
+                float warmEdge = exp(-pow((vWorldPos.y - (topY + 0.012)) / 0.014, 2.0)) * 0.06;
+                albedo = albedo * (1.0 - compressionDarken) + vec3(0.18, 0.03, 0.02) * warmEdge;
+              }
+
+              // Key light with Subsurface Scattering wrap diffuse
+              vec3 L1 = normalize(uKeyLightPos - vWorldPos);
+              float NdotL1 = dot(N, L1);
+              float diff1 = max(0.0, NdotL1);
+              // Wrap lighting for warm skin translucency
+              float wrap1 = max(0.0, (NdotL1 + 0.45) / 1.45);
+              vec3 sssColor = vec3(0.95, 0.34, 0.22);
+              float sssBand = pow(clamp(wrap1 - diff1, 0.0, 1.0), 1.4) * 0.52;
+
+              // Soft dual-lobe specular (broad skin oil sheen + tighter micro-highlight)
+              vec3 H1 = normalize(L1 + V);
+              float specBroad = pow(max(0.0, dot(N, H1)), 18.0) * 0.12;
+              float specTight = pow(max(0.0, dot(N, H1)), 64.0) * 0.07;
+
+              // Fill light
+              vec3 L2 = normalize(uFillLightPos - vWorldPos);
+              float wrap2 = max(0.0, (dot(N, L2) + 0.5) / 1.5);
+
+              // Studio rim light catching natural silhouette & translucent skin edge
+              vec3 L3 = normalize(uRimLightPos - vWorldPos);
+              float NdotV = max(0.0, dot(N, V));
+              float fresnel = pow(1.0 - NdotV, 3.2);
+              float rimBack = max(0.0, dot(N, L3) * 0.5 + 0.5);
+              vec3 rimLight = vec3(0.95, 0.86, 0.82) * fresnel * rimBack * 0.42;
+
+              // Combine lighting
+              vec3 ambient = albedo * vec3(0.24, 0.21, 0.22);
+              vec3 keyContrib = albedo * (diff1 * 0.78) + sssColor * albedo * sssBand + vec3(1.0, 0.94, 0.90) * (specBroad + specTight);
+              vec3 fillContrib = albedo * wrap2 * vec3(0.28, 0.30, 0.36);
+
+              vec3 color = ambient + keyContrib + fillContrib + rimLight;
+
+              // Filmic tone compression for rich studio photography look
+              color = color / (color + vec3(0.75));
+              color = pow(color, vec3(1.0 / 1.12));
+
+              gl_FragColor = vec4(color, 1.0);
+            }
+          `
+        });
+      }
+
+      /**
+       * Custom GLSL Sheer Black Nylon Stockings Shader
+       * Features:
+       * - View-angle dependent Fresnel opacity (sheer head-on, deeper black at grazing angles)
+       * - Anisotropic Kajiya-Kay-inspired specular highlight along micro-fiber weave
+       * - Procedural micro-knit mesh grid & subtle sheen variation
+       * - Dynamic local stretch thinning + compression wrinkle shading
+       * - Reinforced decorative thigh-high welt/lace band at the top cuff
+       */
+      function createNylonShaderMaterial() {
+        return new THREE.ShaderMaterial({
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          uniforms: {
+            uDenier: { value: state.denier },
+            uSheen: { value: state.sheen },
+            uIsThighHigh: { value: 1.0 },
+            uKeyLightPos: { value: new THREE.Vector3(2.2, 2.4, 2.4) },
+            uRimLightPos: { value: new THREE.Vector3(-1.4, 2.1, -2.5) },
+            uRimLight2Pos: { value: new THREE.Vector3(1.8, 1.6, -2.2) }
+          },
+          vertexShader: `
+            attribute float aStretch;   // > 0 when stretched thin, < 0 when bunched/wrinkled
+            attribute float aBandCoord; // 0.0 at ankle -> 1.0 at top cuff edge
+            varying vec3 vNormal;
+            varying vec3 vWorldPos;
+            varying vec3 vTangent;
+            varying vec2 vUv;
+            varying float vStretch;
+            varying float vBandCoord;
+
+            void main() {
+              vUv = uv;
+              vStretch = aStretch;
+              vBandCoord = aBandCoord;
+              vec4 worldPos = modelMatrix * vec4(position, 1.0);
+              vWorldPos = worldPos.xyz;
+              vNormal = normalize(mat3(modelMatrix) * normal);
+
+              // Approximate vertical fiber tangent along the leg axis
+              vec3 upRef = vec3(0.0, 1.0, 0.0);
+              vec3 bitangent = normalize(cross(vNormal, upRef) + vec3(0.0001));
+              vTangent = normalize(cross(bitangent, vNormal));
+
+              gl_Position = projectionMatrix * viewMatrix * worldPos;
+            }
+          `,
+          fragmentShader: `
+            uniform float uDenier;
+            uniform float uSheen;
+            uniform float uIsThighHigh;
+            uniform vec3 uKeyLightPos;
+            uniform vec3 uRimLightPos;
+            uniform vec3 uRimLight2Pos;
+
+            varying vec3 vNormal;
+            varying vec3 vWorldPos;
+            varying vec3 vTangent;
+            varying vec2 vUv;
+            varying float vStretch;
+            varying float vBandCoord;
+
+            // Anisotropic strand specular highlight (Kajiya-Kay inspired)
+            float anisoSpec(vec3 T, vec3 V, vec3 L, float exponent) {
+              vec3 H = normalize(L + V);
+              float TdotH = dot(T, H);
+              float sinTH = sqrt(max(0.0, 1.0 - TdotH * TdotH));
+              return pow(sinTH, exponent);
+            }
+
+            void main() {
+              vec3 N = normalize(vNormal);
+              if (!gl_FrontFacing) N = -N;
+              vec3 V = normalize(cameraPosition - vWorldPos);
+              vec3 T = normalize(vTangent);
+
+              float NdotV = clamp(abs(dot(N, V)), 0.0, 1.0);
+              float fresnel = pow(1.0 - NdotV, 1.85);
+
+              // Procedural high-frequency nylon micro-fiber knit weave
+              float uFreq = vUv.x * 260.0;
+              float vFreq = vUv.y * 420.0;
+              float weaveA = sin(uFreq) * sin(vFreq);
+              float weaveB = sin(uFreq * 0.5 + vFreq * 0.5);
+              float microWeave = 0.5 + 0.5 * (weaveA * 0.6 + weaveB * 0.4);
+
+              // Base sheerness derived from Denier (10D ultra-sheer -> 60D semi-opaque)
+              float denierNorm = clamp((uDenier - 10.0) / 50.0, 0.0, 1.0);
+              float baseAlpha = mix(0.26, 0.72, denierNorm);
+
+              // Real sheer nylon becomes darker & more opaque at grazing angles
+              float grazingAlpha = mix(baseAlpha, 0.94, fresnel * 0.88);
+
+              // Local stretch thins out the knit; bunching/wrinkles thicken it
+              float stretchMod = clamp(1.0 - vStretch * 0.42, 0.55, 1.42);
+              float alpha = clamp(grazingAlpha * stretchMod, 0.14, 0.97);
+
+              // Subtle weave micro-variation in opacity
+              alpha = clamp(alpha + (microWeave - 0.5) * 0.055, 0.12, 0.97);
+
+              // Thigh-high decorative reinforced welt / delicate floral-lace motif near top edge
+              float bandMask = 0.0;
+              float laceAlphaMod = 1.0;
+              if (uIsThighHigh > 0.5) {
+                // Reinforced band zone: top 8% of stocking
+                bandMask = smoothstep(0.915, 0.93, vBandCoord);
+                if (bandMask > 0.01) {
+                  float anglePattern = vUv.x * 28.0 * 3.14159265;
+                  float scallop = 0.985 + 0.014 * cos(anglePattern);
+                  if (vBandCoord > scallop) discard;
+
+                  // Intricate lace-inspired filigree pattern inside the welt band
+                  float laceV = (vBandCoord - 0.915) / 0.085;
+                  float filigree = sin(anglePattern * 2.0) * sin(laceV * 18.0)
+                                 + 0.5 * cos(anglePattern * 4.0 + laceV * 9.0);
+                  float denseTrim = smoothstep(0.0, 0.18, laceV) * (1.0 - smoothstep(0.82, 1.0, laceV));
+                  float patternDensity = mix(0.88, 0.48, smoothstep(-0.2, 0.75, filigree) * denseTrim);
+                  laceAlphaMod = mix(1.0, patternDensity + 0.25, bandMask);
+                  alpha = mix(alpha, clamp(0.84 * laceAlphaMod, 0.35, 0.95), bandMask);
+                }
+              }
+
+              // Deep jet-black nylon base color with subtle warm skin bleed-through at center
+              vec3 nylonColor = vec3(0.025, 0.026, 0.032);
+
+              // Anisotropic sheen along the leg contour catching key & rim lights
+              vec3 LKey = normalize(uKeyLightPos - vWorldPos);
+              vec3 LRim1 = normalize(uRimLightPos - vWorldPos);
+              vec3 LRim2 = normalize(uRimLight2Pos - vWorldPos);
+
+              float keyVis = max(0.0, dot(N, LKey) * 0.65 + 0.35);
+              float specKey = anisoSpec(T, V, LKey, 28.0) * keyVis;
+              float specKeyTight = anisoSpec(T, V, LKey, 96.0) * keyVis;
+
+              float specRim1 = anisoSpec(T, V, LRim1, 22.0) * pow(1.0 - NdotV, 1.4);
+              float specRim2 = anisoSpec(T, V, LRim2, 24.0) * pow(1.0 - NdotV, 1.5);
+
+              // Highlight intensity increases slightly where nylon is pulled taut
+              float tautBoost = 1.0 + max(0.0, vStretch) * 0.45;
+              float microSparkle = 0.88 + 0.24 * microWeave;
+
+              vec3 highlightColor = vec3(0.76, 0.79, 0.86);
+              vec3 sheenContrib = highlightColor * (
+                specKey * 0.26 +
+                specKeyTight * 0.20 +
+                specRim1 * 0.42 +
+                specRim2 * 0.32
+              ) * uSheen * tautBoost * microSparkle * (1.0 - bandMask * 0.55);
+
+              // Subtle sheen on the lace/welt band
+              vec3 laceSheen = vec3(0.28, 0.29, 0.34) * bandMask * (0.3 + 0.7 * keyVis) * 0.35;
+
+              // Wrinkle self-shadowing when compressed/bunched
+              float wrinkleShade = 1.0 - clamp(-vStretch * 0.35, 0.0, 0.45);
+
+              vec3 finalColor = (nylonColor + sheenContrib + laceSheen) * wrinkleShade;
+
+              // Premultiply sheen visibility so highlights read crisply over translucent fabric
+              float finalAlpha = clamp(alpha + length(sheenContrib) * 0.35, 0.14, 0.98);
+
+              gl_FragColor = vec4(finalColor, finalAlpha);
+            }
+          `
+        });
+      }
+
+      /**
+       * ========================================================================
+       * 3. BUILD ANATOMICAL MANNEQUIN, STUDIO BASE & FOOTWEAR
+       * ========================================================================
+       */
+
+      function buildFigureAndEnvironment() {
+        const skinTex = createSkinTextures();
+        const skinMat = createSkinShaderMaterial(skinTex);
+        skinMat.name = 'SkinMaterial';
+
+        // Store reference so we can update compression line uniforms dynamically
+        scene.userData.skinMat = skinMat;
+
+        // 3A. Build Left (side=-1) and Right (side=+1) Sculpted Legs
+        const segY = 56;
+        const segTheta = 40;
+        const yMin = 0.06;
+        const yMax = 0.93;
+
+        [-1, 1].forEach((side) => {
+          const geo = new THREE.BufferGeometry();
+          const positions = [];
+          const uvs = [];
+          const indices = [];
+
+          for (let iy = 0; iy <= segY; iy++) {
+            const v = iy / segY;
+            const y = yMin + (yMax - yMin) * v;
+            for (let it = 0; it <= segTheta; it++) {
+              const u = it / segTheta;
+              const theta = u * Math.PI * 2;
+              const p = evaluateLegPoint(side, y, theta, 0);
+              positions.push(p.x, p.y, p.z);
+              uvs.push(u, v);
+            }
+          }
+
+          const stride = segTheta + 1;
+          for (let iy = 0; iy < segY; iy++) {
+            for (let it = 0; it < segTheta; it++) {
+              const a = iy * stride + it;
+              const b = a + 1;
+              const c = (iy + 1) * stride + it;
+              const d = c + 1;
+              indices.push(a, c, b);
+              indices.push(b, c, d);
+            }
+          }
+
+          geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+          geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+          geo.setIndex(indices);
+          geo.computeVertexNormals();
+
+          const mesh = new THREE.Mesh(geo, skinMat);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.userData = { type: 'leg', side };
+          scene.add(mesh);
+          legMeshes.push(mesh);
+
+          // 3B. Minimalist Sculpted Studio Footwear / Heels resting cleanly on plinth (y=0)
+          buildStudioFoot(side);
+        });
+
+        // 3C. Sculpted Hip-to-Waist Mannequin Torso (modestly clothed in matte opaque studio bodysuit)
+        buildSculptedHipBase();
+
+        // 3D. Circular Studio Photography Pedestal & Cyclorama Floor
+        buildStudioStage();
+      }
+
+      /**
+       * Builds sleek minimalist studio pumps so the legs stand naturally on the pedestal
+       */
+      function buildStudioFoot(side) {
+        const ankleC = getLegCenter(side, 0.065);
+        const heelMat = new THREE.MeshStandardMaterial({
+          color: 0x14151a,
+          roughness: 0.28,
+          metalness: 0.25
+        });
+
+        const footGroup = new THREE.Group();
+        footGroup.position.set(ankleC.x, 0, ankleC.z);
+        // Subtle natural outward toe rotation
+        footGroup.rotation.y = side * -0.14;
+
+        // Sleek tapered vamp/forefoot
+        const vampGeo = new THREE.SphereGeometry(0.042, 24, 18);
+        vampGeo.scale(0.88, 0.56, 2.35);
+        const vamp = new THREE.Mesh(vampGeo, heelMat);
+        vamp.position.set(0, 0.024, 0.045);
+        vamp.castShadow = true;
+        vamp.receiveShadow = true;
+        footGroup.add(vamp);
+
+        // Heel counter cup smoothly meeting ankle
+        const cupGeo = new THREE.CylinderGeometry(0.036, 0.029, 0.055, 22);
+        const cup = new THREE.Mesh(cupGeo, heelMat);
+        cup.position.set(0, 0.052, -0.008);
+        cup.castShadow = true;
+        footGroup.add(cup);
+
+        // Stiletto heel stem
+        const stemGeo = new THREE.CylinderGeometry(0.011, 0.006, 0.068, 14);
+        const stem = new THREE.Mesh(stemGeo, heelMat);
+        stem.position.set(0, 0.034, -0.036);
+        stem.castShadow = true;
+        footGroup.add(stem);
+
+        scene.add(footGroup);
+      }
+
+      /**
+       * Builds the smooth hip/waist mannequin core wearing a matte seamless studio bodysuit/shorts layer
+       * underneath the skirt so lifting or swaying the skirt remains refined, opaque, and editorial.
+       */
+      function buildSculptedHipBase() {
+        const segY = 26;
+        const segT = 48;
+        const yStart = 0.83;
+        const yEnd = 1.24;
+
+        const geo = new THREE.BufferGeometry();
+        const positions = [];
+        const uvs = [];
+        const indices = [];
+
+        for (let iy = 0; iy <= segY; iy++) {
+          const v = iy / segY;
+          const y = yStart + (yEnd - yStart) * v;
+          // Smoothly tuck bottom under hips
+          const bottomCap = smoothstep(0.83, 0.875, y);
+          for (let it = 0; it <= segT; it++) {
+            const u = it / segT;
+            const theta = u * Math.PI * 2;
+            const prof = getTorsoProfile(y, theta);
+            const r = prof.r * (0.45 + 0.55 * bottomCap);
+            positions.push(Math.cos(theta) * r, y, prof.cz + Math.sin(theta) * r);
+            uvs.push(u, v);
+          }
+        }
+
+        const stride = segT + 1;
+        for (let iy = 0; iy < segY; iy++) {
+          for (let it = 0; it < segT; it++) {
+            const a = iy * stride + it;
+            const b = a + 1;
+            const c = (iy + 1) * stride + it;
+            const d = c + 1;
+            indices.push(a, c, b);
+            indices.push(b, c, d);
+          }
+        }
+
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        geo.setIndex(indices);
+        geo.computeVertexNormals();
+
+        // Matte charcoal studio bodysuit/mannequin liner
+        const linerMat = new THREE.MeshStandardMaterial({
+          color: 0x16171d,
+          roughness: 0.78,
+          metalness: 0.05
+        });
+
+        const torsoMesh = new THREE.Mesh(geo, linerMat);
+        torsoMesh.castShadow = true;
+        torsoMesh.receiveShadow = true;
+        scene.add(torsoMesh);
+
+        // Clean studio mannequin top cap at waist
+        const capGeo = new THREE.CircleGeometry(0.115, 36);
+        capGeo.rotateX(-Math.PI / 2);
+        const capMesh = new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({
+          color: 0x1f2128,
+          roughness: 0.55,
+          metalness: 0.35
+        }));
+        capMesh.position.set(0, yEnd, 0.002);
+        scene.add(capMesh);
+      }
+
+      /**
+       * Builds the dark editorial studio plinth & subtle reflective floor
+       */
+      function buildStudioStage() {
+        // Low circular dark marble/slate plinth
+        const plinthGeo = new THREE.CylinderGeometry(0.46, 0.49, 0.05, 64);
+        const plinthMat = new THREE.MeshStandardMaterial({
+          color: 0x15171e,
+          roughness: 0.35,
+          metalness: 0.22
+        });
+        const plinth = new THREE.Mesh(plinthGeo, plinthMat);
+        plinth.position.set(0, -0.025, 0);
+        plinth.receiveShadow = true;
+        scene.add(plinth);
+
+        // Subtle metallic accent ring around plinth edge
+        const ringGeo = new THREE.TorusGeometry(0.462, 0.003, 12, 80);
+        ringGeo.rotateX(Math.PI / 2);
+        const ringMat = new THREE.MeshStandardMaterial({
+          color: 0x525866,
+          roughness: 0.25,
+          metalness: 0.85
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.set(0, -0.002, 0);
+        scene.add(ring);
+
+        // Studio cyclorama floor
+        const floorGeo = new THREE.CircleGeometry(8, 64);
+        floorGeo.rotateX(-Math.PI / 2);
+        const floorMat = new THREE.MeshStandardMaterial({
+          color: 0x0c0d12,
+          roughness: 0.72,
+          metalness: 0.1
+        });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.position.set(0, -0.05, 0);
+        floor.receiveShadow = true;
+        scene.add(floor);
+      }
+
+      /**
+       * ========================================================================
+       * 4. REAL-TIME ELASTIC NYLON STOCKING PHYSICS SOLVER
+       * Models tight circumferential hug, radial stretch & elastic snap-back,
+       * longitudinal sliding/rolling down the leg, and micro-wrinkle formation.
+       * ========================================================================
+       */
+
+      class ElasticStockingSolver {
+        constructor(side, material) {
+          this.side = side;
+          this.segY = 44;
+          this.segT = 36;
+          this.yBase = 0.072;        // Anchored near ankle/heel
+          this.topY = 0.80;          // Current cuff top height
+          this.targetTopY = 0.80;    // Target height for smooth remove/reapply animations
+          this.topVel = 0;
+
+          const count = (this.segY + 1) * (this.segT + 1);
+          this.count = count;
+
+          // Per-vertex dynamic elastic deformation fields
+          this.radialLift = new Float32Array(count);     // Radial pull outward from skin
+          this.radialVel = new Float32Array(count);
+          this.verticalDisp = new Float32Array(count);   // Local vertical stretch/bunching
+          this.verticalVel = new Float32Array(count);
+          this.angleDisp = new Float32Array(count);      // Circumferential twist
+          this.angleVel = new Float32Array(count);
+
+          // Active user pull target
+          this.pullActive = false;
+          this.pullIndex = -1;
+          this.pullWorldTarget = new THREE.Vector3();
+
+          // Build Three.js BufferGeometry
+          this.geometry = new THREE.BufferGeometry();
+          this.positions = new Float32Array(count * 3);
+          this.uvs = new Float32Array(count * 2);
+          this.stretchAttr = new Float32Array(count);
+          this.bandAttr = new Float32Array(count);
+
+          const indices = [];
+          const stride = this.segT + 1;
+          for (let iy = 0; iy <= this.segY; iy++) {
+            const v = iy / this.segY;
+            for (let it = 0; it <= this.segT; it++) {
+              const u = it / this.segT;
+              const idx = iy * stride + it;
+              this.uvs[idx * 2] = u;
+              this.uvs[idx * 2 + 1] = v;
+              this.bandAttr[idx] = v;
+            }
+          }
+
+          for (let iy = 0; iy < this.segY; iy++) {
+            for (let it = 0; it < this.segT; it++) {
+              const a = iy * stride + it;
+              const b = a + 1;
+              const c = (iy + 1) * stride + it;
+              const d = c + 1;
+              indices.push(a, c, b);
+              indices.push(b, c, d);
+            }
+          }
+
+          this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+          this.geometry.setAttribute('uv', new THREE.BufferAttribute(this.uvs, 2));
+          this.geometry.setAttribute('aStretch', new THREE.BufferAttribute(this.stretchAttr, 1));
+          this.geometry.setAttribute('aBandCoord', new THREE.BufferAttribute(this.bandAttr, 1));
+          this.geometry.setIndex(indices);
+
+          this.mesh = new THREE.Mesh(this.geometry, material);
+          this.mesh.renderOrder = 2;
+          this.mesh.userData = { type: 'stocking', side, solver: this };
+          scene.add(this.mesh);
+
+          this.updateMeshGeometry();
+        }
+
+        /**
+         * Begins a user drag interaction on a specific vertex index
+         */
+        startPull(vertexIndex, worldPoint) {
+          this.pullActive = true;
+          this.pullIndex = vertexIndex;
+          this.pullWorldTarget.copy(worldPoint);
+        }
+
+        updatePull(worldPoint) {
+          if (!this.pullActive) return;
+          this.pullWorldTarget.copy(worldPoint);
+        }
+
+        endPull() {
+          this.pullActive = false;
+          this.pullIndex = -1;
+        }
+
+        reset(targetTop) {
+          this.targetTopY = targetTop;
+          this.topY = targetTop;
+          this.topVel = 0;
+          this.radialLift.fill(0);
+          this.radialVel.fill(0);
+          this.verticalDisp.fill(0);
+          this.verticalVel.fill(0);
+          this.angleDisp.fill(0);
+          this.angleVel.fill(0);
+          this.updateMeshGeometry();
+        }
+
+        /**
+         * Advances elastic stocking spring-damper physics one frame
+         */
+        step(dt) {
+          const clampedDt = Math.min(dt, 0.025);
+          const stride = this.segT + 1;
+
+          // 1. Smooth animated slide when user presses Remove / Reapply
+          if (state.stockingAutoAnim) {
+            const diff = this.targetTopY - this.topY;
+            const springF = diff * 18.0 - this.topVel * 6.5;
+            this.topVel += springF * clampedDt;
+            this.topY += this.topVel * clampedDt;
+            this.topY = Math.max(0.14, Math.min(0.92, this.topY));
+            if (Math.abs(diff) < 0.002 && Math.abs(this.topVel) < 0.005) {
+              this.topY = this.targetTopY;
+              this.topVel = 0;
+            }
+          }
+
+          // 2. Apply user drag force to nearby vertices (radial stretch + vertical cuff slide)
+          if (this.pullActive && this.pullIndex >= 0) {
+            const grabIy = Math.floor(this.pullIndex / stride);
+            const grabIt = this.pullIndex % stride;
+            const grabV = grabIy / this.segY;
+            const grabY = this.yBase + (this.topY - this.yBase) * grabV;
+            const grabTheta = (grabIt / this.segT) * Math.PI * 2;
+            const restP = evaluateLegPoint(this.side, grabY, grabTheta, 0.0025);
+
+            // Compute pull delta vector
+            const delta = this.pullWorldTarget.clone().sub(restP);
+            const c = getLegCenter(this.side, grabY);
+            const radialDir = new THREE.Vector3(restP.x - c.x, 0, restP.z - c.z).normalize();
+            const tangentDir = new THREE.Vector3(-radialDir.z, 0, radialDir.x);
+
+            // Outward radial stretch (clamped to physically realistic nylon elasticity)
+            const outwardPull = Math.max(0, Math.min(0.085, delta.dot(radialDir)));
+            // Tangential twist
+            const twistPull = Math.max(-0.22, Math.min(0.22, delta.dot(tangentDir) * 3.5));
+            // Vertical pull/slide
+            const verticalPull = Math.max(-0.18, Math.min(0.14, delta.y));
+
+            // If user pulls firmly downward near upper half, smoothly slide the cuff down the leg
+            if (grabV > 0.45) {
+              const desiredTop = this.topY + verticalPull * clampedDt * 3.8;
+              const maxAllowed = state.hosieryStyle === 'pantyhose' ? 0.92 : 0.84;
+              this.topY = Math.max(0.15, Math.min(maxAllowed, desiredTop));
+              this.targetTopY = this.topY;
+              state.stockingAutoAnim = false;
+            }
+
+            // Distribute localized Gaussian elastic stretch around grabbed vertex
+            for (let iy = 1; iy <= this.segY; iy++) {
+              const dy = (iy - grabIy) / 6.5;
+              if (Math.abs(dy) > 2.6) continue;
+              for (let it = 0; it <= this.segT; it++) {
+                // Wrap angular distance around seam
+                let dit = Math.abs(it - grabIt);
+                dit = Math.min(dit, this.segT - dit);
+                const dtNorm = dit / 5.5;
+                const w = Math.exp(-0.5 * (dy * dy + dtNorm * dtNorm));
+                if (w < 0.01) continue;
+
+                const idx = iy * stride + it;
+                this.radialLift[idx] += (outwardPull * w - this.radialLift[idx]) * Math.min(1, clampedDt * 22);
+                this.verticalDisp[idx] += (verticalPull * 0.55 * w - this.verticalDisp[idx]) * Math.min(1, clampedDt * 18);
+                this.angleDisp[idx] += (twistPull * w - this.angleDisp[idx]) * Math.min(1, clampedDt * 18);
+              }
+            }
+          }
+
+          // 3. Elastic Hooke's Law rebound + spatial smoothing across nylon mesh
+          const kRadial = 145.0;
+          const dRadial = 11.5;
+          const kVert = 95.0;
+          const dVert = 10.0;
+
+          for (let iy = 1; iy <= this.segY; iy++) {
+            for (let it = 0; it <= this.segT; it++) {
+              const idx = iy * stride + it;
+
+              // Skip damping strongly on immediate pulled core so it tracks pointer crisply
+              const isHeld = this.pullActive && Math.abs(iy - Math.floor(this.pullIndex / stride)) < 3;
+              const restoreScale = isHeld ? 0.15 : 1.0;
+
+              // Neighbor coupling for smooth elastic waves during snap-back
+              const upIdx = Math.min(this.segY, iy + 1) * stride + it;
+              const dnIdx = Math.max(0, iy - 1) * stride + it;
+              const lfIdx = iy * stride + ((it - 1 + this.segT) % this.segT);
+              const rtIdx = iy * stride + ((it + 1) % this.segT);
+
+              const avgRad = 0.25 * (this.radialLift[upIdx] + this.radialLift[dnIdx] + this.radialLift[lfIdx] + this.radialLift[rtIdx]);
+              const avgVert = 0.25 * (this.verticalDisp[upIdx] + this.verticalDisp[dnIdx] + this.verticalDisp[lfIdx] + this.verticalDisp[rtIdx]);
+
+              const fRad = (-kRadial * this.radialLift[idx] + 45.0 * (avgRad - this.radialLift[idx])) * restoreScale - dRadial * this.radialVel[idx];
+              this.radialVel[idx] += fRad * clampedDt;
+              this.radialLift[idx] += this.radialVel[idx] * clampedDt;
+              // Prevent piercing inside skin
+              if (this.radialLift[idx] < 0) {
+                this.radialLift[idx] = 0;
+                this.radialVel[idx] *= -0.15;
+              }
+
+              const fVert = (-kVert * this.verticalDisp[idx] + 35.0 * (avgVert - this.verticalDisp[idx])) * restoreScale - dVert * this.verticalVel[idx];
+              this.verticalVel[idx] += fVert * clampedDt;
+              this.verticalDisp[idx] += this.verticalVel[idx] * clampedDt;
+
+              const fAng = -85.0 * this.angleDisp[idx] * restoreScale - 10.0 * this.angleVel[idx];
+              this.angleVel[idx] += fAng * clampedDt;
+              this.angleDisp[idx] += this.angleVel[idx] * clampedDt;
+            }
+          }
+
+          // Enforce seamless wrap at theta = 0 / 2PI
+          for (let iy = 0; iy <= this.segY; iy++) {
+            const first = iy * stride;
+            const last = iy * stride + this.segT;
+            this.radialLift[last] = this.radialLift[first];
+            this.verticalDisp[last] = this.verticalDisp[first];
+            this.angleDisp[last] = this.angleDisp[first];
+          }
+
+          this.updateMeshGeometry();
+        }
+
+        /**
+         * Evaluates deformed 3D vertex positions, natural compression wrinkles, and local stretch metrics
+         */
+        updateMeshGeometry() {
+          const stride = this.segT + 1;
+          const restLen = 0.80 - this.yBase;
+          const currLen = Math.max(0.06, this.topY - this.yBase);
+          // Global compression factor when stocking is slid/bunched down the leg
+          const bunchFactor = Math.max(0, 1.0 - currLen / restLen);
+
+          for (let iy = 0; iy <= this.segY; iy++) {
+            const v = iy / this.segY;
+            const baseY = this.yBase + currLen * v;
+
+            // Subtle natural horizontal micro-wrinkles around knee flex, ankle, and bunched cuff
+            const ankleBunch = gauss(baseY, 0.13, 0.045) * 0.0012;
+            const kneeCrease = gauss(baseY, 0.50, 0.04) * 0.0010;
+            const cuffRoll = bunchFactor * smoothstep(0.55, 1.0, v) * 0.0075;
+
+            for (let it = 0; it <= this.segT; it++) {
+              const u = it / this.segT;
+              const idx = iy * stride + it;
+              const theta = u * Math.PI * 2 + this.angleDisp[idx];
+
+              const y = Math.max(this.yBase, Math.min(0.935, baseY + this.verticalDisp[idx]));
+
+              // Organic sinusoidal gathers where fabric bunches vertically
+              const gatherWave =
+                (Math.sin(v * 52.0 + Math.sin(theta * 3.0) * 1.4) * 0.5 + 0.5) * cuffRoll +
+                Math.sin(v * 68.0 + theta * 2.0) * (ankleBunch + kneeCrease * Math.max(0, -Math.sin(theta)));
+
+              // Tiny tight-fit thickness offset (+2.2mm above skin) + radial pull + wrinkles
+              const offset = 0.0022 + this.radialLift[idx] + gatherWave;
+              const p = evaluateLegPoint(this.side, y, theta, offset);
+
+              this.positions[idx * 3] = p.x;
+              this.positions[idx * 3 + 1] = p.y;
+              this.positions[idx * 3 + 2] = p.z;
+
+              // Compute local stretch factor for shader thinning & highlight response
+              const radialStretch = this.radialLift[idx] * 14.0;
+              const vertCompression = -bunchFactor * smoothstep(0.45, 1.0, v) * 0.9 - gatherWave * 55.0;
+              this.stretchAttr[idx] = radialStretch + vertCompression + this.verticalDisp[idx] * 3.5;
+            }
+          }
+
+          this.geometry.attributes.position.needsUpdate = true;
+          this.geometry.attributes.aStretch.needsUpdate = true;
+          this.geometry.computeVertexNormals();
+        }
+      }
+
+      /**
+       * ========================================================================
+       * 5. REAL-TIME VERLET CLOTH PHYSICS SOLVER FOR THE FITTED SKIRT
+       * Cylindrical mass-spring cloth grid with structural, shear, and bending
+       * constraints, studio wind turbulence, interactive pointer grabbing,
+       * and continuous analytical collision against both legs & pelvis.
+       * ========================================================================
+       */
+
+      class VerletSkirtSolver {
+        constructor() {
+          this.segT = 44;  // Radial circumference segments
+          this.segY = 18;  // Vertical drape rows
+          this.count = (this.segY + 1) * this.segT;
+
+          // Particle arrays
+          this.pos = [];
+          this.prev = [];
+          this.pinned = new Uint8Array(this.count);
+          this.constraints = [];
+
+          // Fabric physical parameters
+          this.stiffness = 0.92;
+          this.damping = 0.965;
+          this.windPhase = 0;
+
+          // Create Skirt Material with procedural woven bump map
+          this.fabricTextures = {
+            polyester: createFabricTexture('polyester'),
+            wool: createFabricTexture('wool'),
+            cotton: createFabricTexture('cotton')
+          };
+
+          this.material = new THREE.MeshPhysicalMaterial({
+            color: new THREE.Color(state.skirtColor),
+            roughness: 0.42,
+            metalness: 0.04,
+            bumpMap: this.fabricTextures.polyester,
+            bumpScale: 0.0018,
+            clearcoat: 0.08,
+            clearcoatRoughness: 0.55,
+            side: THREE.DoubleSide
+          });
+
+          // Create BufferGeometry (uses segT + 1 columns for clean UV seam)
+          this.geometry = new THREE.BufferGeometry();
+          const renderVerts = (this.segY + 1) * (this.segT + 1);
+          this.renderPositions = new Float32Array(renderVerts * 3);
+          this.renderUvs = new Float32Array(renderVerts * 2);
+
+          const indices = [];
+          const stride = this.segT + 1;
+          for (let iy = 0; iy <= this.segY; iy++) {
+            for (let it = 0; it <= this.segT; it++) {
+              const idx = iy * stride + it;
+              this.renderUvs[idx * 2] = it / this.segT;
+              this.renderUvs[idx * 2 + 1] = iy / this.segY;
+            }
+          }
+          for (let iy = 0; iy < this.segY; iy++) {
+            for (let it = 0; it < this.segT; it++) {
+              const a = iy * stride + it;
+              const b = a + 1;
+              const c = (iy + 1) * stride + it;
+              const d = c + 1;
+              indices.push(a, b, c);
+              indices.push(b, d, c);
+            }
+          }
+
+          this.geometry.setAttribute('position', new THREE.BufferAttribute(this.renderPositions, 3));
+          this.geometry.setAttribute('uv', new THREE.BufferAttribute(this.renderUvs, 2));
+          this.geometry.setIndex(indices);
+
+          this.mesh = new THREE.Mesh(this.geometry, this.material);
+          this.mesh.castShadow = true;
+          this.mesh.receiveShadow = true;
+          this.mesh.renderOrder = 3;
+          this.mesh.userData = { type: 'skirt', solver: this };
+          scene.add(this.mesh);
+
+          this.rebuildGeometry(state.skirtLength);
+          this.applyFabricPreset(state.skirtFabric);
+        }
+
+        idx(iy, it) {
+          const wrappedT = ((it % this.segT) + this.segT) % this.segT;
+          return iy * this.segT + wrappedT;
+        }
+
+        /**
+         * Initializes or resets the skirt geometry for 'mini' or 'knee' length and selected size
+         */
+        rebuildGeometry(lengthMode, sizeMode = state.skirtSize) {
+          this.pos = [];
+          this.prev = [];
+          this.constraints = [];
+          this.pinned.fill(0);
+
+          // Skirt size presets: M preserves the exact default tailored fit
+          const sizePresets = {
+            XS: { waistOffset: 0.012, dropOffset: -0.035, ease: -0.003, flareMult: 0.45, pleatMult: 0.5 },
+            S:  { waistOffset: 0.006, dropOffset: -0.018, ease: -0.001, flareMult: 0.72, pleatMult: 0.75 },
+            M:  { waistOffset: 0.0,   dropOffset: 0.0,    ease: 0.0,    flareMult: 1.0,  pleatMult: 1.0 },
+            L:  { waistOffset: -0.010, dropOffset: 0.025, ease: 0.014,  flareMult: 1.5,  pleatMult: 1.5 },
+            XL: { waistOffset: -0.020, dropOffset: 0.050, ease: 0.030,  flareMult: 2.1,  pleatMult: 2.1 }
+          };
+          const sz = sizePresets[sizeMode] || sizePresets.M;
+
+          const yTop = 1.11 + sz.waistOffset; // Sits naturally at high waist/hips
+          const skirtDrop = (lengthMode === 'knee' ? 0.56 : 0.34) + sz.dropOffset; // Mini stops mid-upper thigh, Knee at patella
+
+          for (let iy = 0; iy <= this.segY; iy++) {
+            const v = iy / this.segY; // 0 = waistband, 1 = bottom hem
+            const y = yTop - skirtDrop * v;
+
+            // Gentle A-line tailored flare toward the hem with subtle natural pleat wave
+            const baseFlare = lengthMode === 'knee'
+              ? 0.014 + 0.048 * Math.pow(v, 1.45)
+              : 0.012 + 0.036 * Math.pow(v, 1.35);
+            const flare = baseFlare * sz.flareMult;
+
+            for (let it = 0; it < this.segT; it++) {
+              const theta = (it / this.segT) * Math.PI * 2;
+              let r, cz;
+
+              if (y >= 0.87) {
+                const prof = getTorsoProfile(y, theta);
+                // Keep waistband clearance safely outside collision margin even on XS
+                r = prof.r + Math.max(0.009, 0.008 + sz.ease + flare * 0.45);
+                cz = prof.cz;
+              } else {
+                // Smoothly envelops both legs with natural tailored drape
+                const hipProf = getTorsoProfile(0.87, theta);
+                const pleatRipple = Math.sin(theta * 8.0) * 0.005 * sz.pleatMult * v;
+                r = hipProf.r * (0.98 - 0.06 * (0.87 - y)) + sz.ease + flare + pleatRipple;
+                cz = hipProf.cz;
+              }
+
+              const p = new THREE.Vector3(Math.cos(theta) * r, y, cz + Math.sin(theta) * r);
+              const i = this.idx(iy, it);
+              this.pos[i] = p.clone();
+              this.prev[i] = p.clone();
+
+              // Pin top waistband row firmly so skirt stays anchored cleanly on waist
+              if (iy === 0) {
+                this.pinned[i] = 1;
+              }
+            }
+          }
+
+          // Build Structural, Shear, and Bending Springs
+          const addSpring = (a, b, stiffness) => {
+            const restLen = this.pos[a].distanceTo(this.pos[b]);
+            this.constraints.push({ a, b, restLen, stiffness });
+          };
+
+          for (let iy = 0; iy <= this.segY; iy++) {
+            for (let it = 0; it < this.segT; it++) {
+              const curr = this.idx(iy, it);
+              // Horizontal structural (circumferential)
+              addSpring(curr, this.idx(iy, it + 1), 0.96);
+              // Vertical structural
+              if (iy < this.segY) {
+                addSpring(curr, this.idx(iy + 1, it), 0.98);
+                // Diagonal shear springs (prevent boxy distortion, create realistic drape folds)
+                addSpring(curr, this.idx(iy + 1, it + 1), 0.72);
+                addSpring(curr, this.idx(iy + 1, it - 1), 0.72);
+              }
+              // Bending constraints (2-step springs give fabric realistic body & soft pleat curves)
+              addSpring(curr, this.idx(iy, it + 2), 0.32);
+              if (iy < this.segY - 1) {
+                addSpring(curr, this.idx(iy + 2, it), 0.36);
+              }
+            }
+          }
+
+          // Run a few silent settle steps so skirt starts in a natural draped state
+          for (let s = 0; s < 14; s++) {
+            this.step(0.016, false);
+          }
+          this.syncRenderMesh();
+        }
+
+        /**
+         * Updates shader properties & cloth stiffness for Polyester, Wool Blend, or Light Cotton
+         */
+        applyFabricPreset(fabric) {
+          this.material.bumpMap = this.fabricTextures[fabric];
+          if (fabric === 'polyester') {
+            this.material.roughness = 0.38;
+            this.material.clearcoat = 0.14;
+            this.material.bumpScale = 0.0014;
+            this.damping = 0.972;
+            this.stiffness = 0.92;
+          } else if (fabric === 'wool') {
+            this.material.roughness = 0.86;
+            this.material.clearcoat = 0.0;
+            this.material.bumpScale = 0.0042;
+            this.damping = 0.952;
+            this.stiffness = 0.98;
+          } else {
+            this.material.roughness = 0.72;
+            this.material.clearcoat = 0.02;
+            this.material.bumpScale = 0.0026;
+            this.damping = 0.966;
+            this.stiffness = 0.88;
+          }
+          this.material.needsUpdate = true;
+        }
+
+        setColor(hex) {
+          this.material.color.set(hex);
+        }
+
+        /**
+         * Adds a graceful swaying impulse to demonstrate cloth physics
+         */
+        applySwayImpulse() {
+          for (let iy = 2; iy <= this.segY; iy++) {
+            const w = iy / this.segY;
+            for (let it = 0; it < this.segT; it++) {
+              const i = this.idx(iy, it);
+              const theta = (it / this.segT) * Math.PI * 2;
+              this.prev[i].x -= (0.0055 + 0.002 * Math.sin(theta * 2)) * w;
+              this.prev[i].z -= (0.004 * Math.cos(theta)) * w;
+            }
+          }
+        }
+
+        /**
+         * Finds nearby cloth vertices when the user grabs the skirt
+         */
+        getGrabCluster(worldPoint) {
+          let bestIdx = -1;
+          let bestDist = Infinity;
+          for (let i = 0; i < this.count; i++) {
+            if (this.pinned[i]) continue;
+            const d = this.pos[i].distanceToSquared(worldPoint);
+            if (d < bestDist) {
+              bestDist = d;
+              bestIdx = i;
+            }
+          }
+          const indices = [];
+          const weights = [];
+          if (bestIdx >= 0) {
+            const center = this.pos[bestIdx];
+            const radius = 0.14;
+            for (let i = 0; i < this.count; i++) {
+              if (this.pinned[i]) continue;
+              const d = this.pos[i].distanceTo(center);
+              if (d < radius) {
+                const w = Math.pow(1.0 - d / radius, 1.5);
+                indices.push(i);
+                weights.push(w);
+              }
+            }
+          }
+          return { indices, weights };
+        }
+
+        /**
+         * Analytical collision resolution against pelvis/torso and both legs + stockings
+         */
+        resolveBodyCollisions() {
+          const margin = 0.0085; // Clean fabric thickness clearance above stockings & liner
+
+          for (let i = 0; i < this.count; i++) {
+            if (this.pinned[i]) continue;
+            const p = this.pos[i];
+
+            // 1. Collide with sculpted torso/hips (y >= 0.85)
+            if (p.y >= 0.84) {
+              const theta = Math.atan2(p.z, p.x);
+              const prof = getTorsoProfile(Math.min(1.22, p.y), theta);
+              const dx = p.x;
+              const dz = p.z - prof.cz;
+              const dist = Math.sqrt(dx * dx + dz * dz);
+              const minR = prof.r + margin;
+              if (dist < minR && dist > 1e-5) {
+                const push = minR / dist;
+                p.x = dx * push;
+                p.z = prof.cz + dz * push;
+                // Gentle surface friction
+                this.prev[i].lerp(p, 0.25);
+              }
+            }
+
+            // 2. Collide with left and right sculpted legs (y <= 0.93)
+            if (p.y <= 0.93 && p.y >= 0.08) {
+              for (let s = 0; s < 2; s++) {
+                const side = s === 0 ? -1 : 1;
+                const c = getLegCenter(side, p.y);
+                const dx = p.x - c.x;
+                const dz = p.z - c.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist > 0.22 || dist < 1e-5) continue;
+
+                const theta = Math.atan2(dz, dx);
+                const legR = getLegRadius(side, p.y, theta) + margin;
+                if (dist < legR) {
+                  const push = legR / dist;
+                  p.x = c.x + dx * push;
+                  p.z = c.z + dz * push;
+                  // Smooth sliding friction against nylon stockings
+                  this.prev[i].lerp(p, 0.22);
+                }
+              }
+            }
+          }
+        }
+
+        /**
+         * Advances Verlet cloth physics one step
+         */
+        step(dt, allowWind = true) {
+          const clampedDt = Math.min(dt, 0.02);
+          const dt2 = clampedDt * clampedDt;
+          this.windPhase += clampedDt * 2.2;
+
+          const gravityY = -9.81 * state.gravityScale * 0.42;
+          const windMag = allowWind ? state.windStrength * 1.9 : 0;
+
+          // 1. Verlet Integration with gravity & swirling studio breeze
+          for (let i = 0; i < this.count; i++) {
+            if (this.pinned[i]) continue;
+            const p = this.pos[i];
+            const prev = this.prev[i];
+
+            const vx = (p.x - prev.x) * this.damping;
+            const vy = (p.y - prev.y) * this.damping;
+            const vz = (p.z - prev.z) * this.damping;
+
+            prev.copy(p);
+
+            // Organic turbulent breeze
+            let wx = 0, wz = 0;
+            if (windMag > 0.001) {
+              const rowWeight = Math.floor(i / this.segT) / this.segY;
+              const gust = 0.65 + 0.35 * Math.sin(this.windPhase + p.y * 4.5 + p.x * 6.0);
+              wx = windMag * gust * (0.8 + 0.35 * Math.cos(this.windPhase * 0.7 + p.z * 5.0)) * rowWeight;
+              wz = windMag * 0.45 * Math.sin(this.windPhase * 1.3 + p.x * 7.0) * rowWeight;
+            }
+
+            p.x += vx + wx * dt2;
+            p.y += vy + gravityY * dt2;
+            p.z += vz + wz * dt2;
+          }
+
+          // 2. Apply active user grab constraint (smoothly lift/sway skirt)
+          if (dragState.active && dragState.type === 'skirt' && dragState.skirtIndices.length > 0) {
+            const delta = dragState.currentPoint.clone().sub(dragState.startPoint);
+            for (let k = 0; k < dragState.skirtIndices.length; k++) {
+              const idx = dragState.skirtIndices[k];
+              const w = dragState.skirtWeights[k];
+              // Clamp max upward lift comfortably below waist so cloth stays physically stable
+              const targetY = Math.min(1.06, this.pos[idx].y + delta.y * 0.35 * w);
+              this.pos[idx].x += delta.x * 0.32 * w;
+              this.pos[idx].y = targetY;
+              this.pos[idx].z += delta.z * 0.32 * w;
+            }
+            // Gently relax startPoint toward currentPoint so dragging feels responsive & damped
+            dragState.startPoint.lerp(dragState.currentPoint, 0.35);
+          }
+
+          // 3. Iterative Distance Constraint Relaxation + Body Collision
+          const iterations = 6;
+          const diff = new THREE.Vector3();
+
+          for (let iter = 0; iter < iterations; iter++) {
+            for (let c = 0; c < this.constraints.length; c++) {
+              const con = this.constraints[c];
+              const pa = this.pos[con.a];
+              const pb = this.pos[con.b];
+
+              diff.subVectors(pb, pa);
+              const dist = diff.length();
+              if (dist < 1e-6) continue;
+
+              const error = (dist - con.restLen) / dist;
+              const corr = error * con.stiffness * this.stiffness * 0.5;
+
+              const pinA = this.pinned[con.a];
+              const pinB = this.pinned[con.b];
+
+              if (!pinA && !pinB) {
+                pa.addScaledVector(diff, corr);
+                pb.addScaledVector(diff, -corr);
+              } else if (pinA && !pinB) {
+                pb.addScaledVector(diff, -corr * 2.0);
+              } else if (!pinA && pinB) {
+                pa.addScaledVector(diff, corr * 2.0);
+              }
+            }
+
+            if (iter % 2 === 1) {
+              this.resolveBodyCollisions();
+            }
+          }
+
+          this.syncRenderMesh();
+        }
+
+        /**
+         * Copies simulated particle positions into the Three.js BufferGeometry
+         */
+        syncRenderMesh() {
+          const stride = this.segT + 1;
+          for (let iy = 0; iy <= this.segY; iy++) {
+            for (let it = 0; it <= this.segT; it++) {
+              const simIdx = this.idx(iy, it);
+              const p = this.pos[simIdx];
+              const outIdx = (iy * stride + it) * 3;
+              this.renderPositions[outIdx] = p.x;
+              this.renderPositions[outIdx + 1] = p.y;
+              this.renderPositions[outIdx + 2] = p.z;
+            }
+          }
+          this.geometry.attributes.position.needsUpdate = true;
+          this.geometry.computeVertexNormals();
+          this.geometry.computeBoundingBox();
+          this.geometry.computeBoundingSphere();
+        }
+      }
+
+      /**
+       * ========================================================================
+       * 6. CINEMATIC STUDIO LIGHTING & SCENE INITIALIZATION
+       * ========================================================================
+       */
+
+      function setupLighting() {
+        // Subtle ambient hemisphere fill
+        const hemi = new THREE.HemisphereLight(0xdbe4ff, 0x1a151c, 0.35);
+        scene.add(hemi);
+
+        // Warm soft studio Key Light (front-right)
+        const keyLight = new THREE.SpotLight(0xfff1e4, 2.1, 12, Math.PI / 3.4, 0.65, 1.2);
+        keyLight.position.set(2.2, 2.4, 2.4);
+        keyLight.target.position.set(0, 0.62, 0);
+        keyLight.castShadow = true;
+        keyLight.shadow.mapSize.width = 1024;
+        keyLight.shadow.mapSize.height = 1024;
+        keyLight.shadow.bias = -0.0005;
+        scene.add(keyLight);
+        scene.add(keyLight.target);
+        lights.key = keyLight;
+
+        // Cool-neutral studio Fill Light (front-left)
+        const fillLight = new THREE.PointLight(0xb8c8e8, 0.75, 10);
+        fillLight.position.set(-2.4, 1.4, 1.6);
+        scene.add(fillLight);
+        lights.fill = fillLight;
+
+        // Crisp high-contrast Rim Light (back-left) to carve out nylon sheen & skirt edges
+        const rimLight1 = new THREE.SpotLight(0xe6f0ff, 2.6, 10, Math.PI / 3.2, 0.55, 1.1);
+        rimLight1.position.set(-1.4, 2.1, -2.5);
+        rimLight1.target.position.set(0, 0.55, 0);
+        scene.add(rimLight1);
+        scene.add(rimLight1.target);
+        lights.rim1 = rimLight1;
+
+        // Secondary warm-white Rim Accent (back-right)
+        const rimLight2 = new THREE.PointLight(0xffe9dc, 1.15, 8);
+        rimLight2.position.set(1.8, 1.5, -2.2);
+        scene.add(rimLight2);
+        lights.rim2 = rimLight2;
+      }
+
+      function initScene() {
+        try {
+          viewportEl = document.getElementById('viewport');
+
+          scene = new THREE.Scene();
+          scene.background = new THREE.Color(0x0b0c10);
+          scene.fog = new THREE.FogExp2(0x0b0c10, 0.14);
+
+          const w = viewportEl.clientWidth || window.innerWidth;
+          const h = viewportEl.clientHeight || window.innerHeight;
+          camera = new THREE.PerspectiveCamera(36, w / h, 0.05, 30);
+
+          renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            powerPreference: 'high-performance'
+          });
+          renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+          renderer.setSize(w, h);
+          renderer.shadowMap.enabled = true;
+          renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+          renderer.toneMapping = THREE.ACESFilmicToneMapping;
+          renderer.toneMappingExposure = 1.08;
+          renderer.outputEncoding = THREE.sRGBEncoding;
+
+          viewportEl.appendChild(renderer.domElement);
+
+          setupLighting();
+          buildFigureAndEnvironment();
+
+          // Initialize Sheer Nylon Stockings (Left & Right)
+          const nylonMat = createNylonShaderMaterial();
+          scene.userData.nylonMat = nylonMat;
+          stockingSolvers.push(new ElasticStockingSolver(-1, nylonMat));
+          stockingSolvers.push(new ElasticStockingSolver(1, nylonMat));
+
+          // Initialize Verlet Skirt Cloth Solver
+          skirtSolver = new VerletSkirtSolver();
+
+          setupPointerInteractions();
+          setupUIControls();
+          window.addEventListener('resize', handleResize);
+
+          // Set initial responsive drawer visibility
+          updatePanelVisibility();
+          updateCameraPosition(true);
+        } catch (err) {
+          console.error('Initialization error:', err);
+          showToast('WebGL initialization issue — please ensure hardware acceleration is enabled.');
+        }
+      }
+
+      /**
+       * ========================================================================
+       * 7. UNIFIED MOUSE & TOUCH POINTER INTERACTIONS
+       * ========================================================================
+       */
+
+      function updatePointerCoords(clientX, clientY) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      }
+
+      function findNearestVertexIndex(hit) {
+        const geo = hit.object.geometry;
+        const posAttr = geo.attributes.position;
+        const face = hit.face;
+        const localPoint = hit.object.worldToLocal(hit.point.clone());
+        const candidates = [face.a, face.b, face.c];
+        let best = face.a;
+        let minD = Infinity;
+        const tmp = new THREE.Vector3();
+        for (const idx of candidates) {
+          tmp.fromBufferAttribute(posAttr, idx);
+          const d = tmp.distanceToSquared(localPoint);
+          if (d < minD) {
+            minD = d;
+            best = idx;
+          }
+        }
+        return best;
+      }
+
+      function setupPointerInteractions() {
+        const dom = renderer.domElement;
+
+        dom.addEventListener('pointerdown', (e) => {
+          if (e.button !== 0 && e.pointerType === 'mouse') return;
+          dom.setPointerCapture(e.pointerId);
+          updatePointerCoords(e.clientX, e.clientY);
+
+          camCtrl.lastX = e.clientX;
+          camCtrl.lastY = e.clientY;
+
+          // Determine raycast targets based on active interaction mode
+          let targets = [];
+          if (state.mode === 'auto') {
+            targets = [skirtSolver.mesh, stockingSolvers[0].mesh, stockingSolvers[1].mesh];
+          } else if (state.mode === 'skirt') {
+            targets = [skirtSolver.mesh];
+          } else if (state.mode === 'stockings') {
+            targets = [stockingSolvers[0].mesh, stockingSolvers[1].mesh];
+          }
+
+          raycaster.setFromCamera(pointer, camera);
+          const hits = targets.length > 0 ? raycaster.intersectObjects(targets, false) : [];
+
+          if (hits.length > 0) {
+            const hit = hits[0];
+            const objType = hit.object.userData.type;
+
+            // Create a camera-facing drag plane passing through hit point
+            const camDir = new THREE.Vector3();
+            camera.getWorldDirection(camDir);
+            dragState.grabPlane.setFromNormalAndCoplanarPoint(camDir.negate(), hit.point);
+            dragState.startPoint.copy(hit.point);
+            dragState.currentPoint.copy(hit.point);
+            dragState.active = true;
+
+            viewportEl.classList.add('dragging-garment');
+
+            if (objType === 'skirt') {
+              dragState.type = 'skirt';
+              const cluster = skirtSolver.getGrabCluster(hit.point);
+              dragState.skirtIndices = cluster.indices;
+              dragState.skirtWeights = cluster.weights;
+              setTargetPill('Adjusting Skirt');
+            } else if (objType === 'stocking') {
+              dragState.type = 'stocking';
+              const solver = hit.object.userData.solver;
+              dragState.stockingIndex = stockingSolvers.indexOf(solver);
+              dragState.vertexIndex = findNearestVertexIndex(hit);
+              solver.startPull(dragState.vertexIndex, hit.point);
+              setTargetPill('Stretching Nylon');
+            }
+          } else {
+            // Orbit camera when dragging empty studio space (or in Orbit mode)
+            dragState.active = true;
+            dragState.type = 'orbit';
+            viewportEl.classList.add('dragging-orbit');
+            setTargetPill('Orbiting Camera');
+          }
+        });
+
+        dom.addEventListener('pointermove', (e) => {
+          updatePointerCoords(e.clientX, e.clientY);
+
+          if (!dragState.active) {
+            // Hover cursor feedback on desktop
+            if (e.pointerType === 'mouse' && state.mode !== 'orbit') {
+              raycaster.setFromCamera(pointer, camera);
+              const hits = raycaster.intersectObjects(
+                [skirtSolver.mesh, stockingSolvers[0].mesh, stockingSolvers[1].mesh],
+                false
+              );
+              viewportEl.classList.toggle('hover-garment', hits.length > 0);
+            }
+            return;
+          }
+
+          if (dragState.type === 'orbit') {
+            const dx = e.clientX - camCtrl.lastX;
+            const dy = e.clientY - camCtrl.lastY;
+            camCtrl.lastX = e.clientX;
+            camCtrl.lastY = e.clientY;
+
+            camCtrl.targetTheta -= dx * 0.0075;
+            camCtrl.targetPhi = Math.max(0.55, Math.min(2.15, camCtrl.targetPhi - dy * 0.0065));
+          } else {
+            raycaster.setFromCamera(pointer, camera);
+            const intersectPt = new THREE.Vector3();
+            if (raycaster.ray.intersectPlane(dragState.grabPlane, intersectPt)) {
+              dragState.currentPoint.copy(intersectPt);
+              if (dragState.type === 'stocking' && dragState.stockingIndex >= 0) {
+                stockingSolvers[dragState.stockingIndex].updatePull(intersectPt);
+              }
+            }
+          }
+        });
+
+        const endInteraction = () => {
+          if (dragState.type === 'stocking' && dragState.stockingIndex >= 0) {
+            stockingSolvers[dragState.stockingIndex].endPull();
+          }
+          dragState.active = false;
+          dragState.type = null;
+          dragState.stockingIndex = -1;
+          dragState.skirtIndices = [];
+          viewportEl.classList.remove('dragging-orbit', 'dragging-garment');
+          updateModePillLabel();
+        };
+
+        dom.addEventListener('pointerup', endInteraction);
+        dom.addEventListener('pointercancel', endInteraction);
+
+        // Smooth wheel zoom
+        dom.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          camCtrl.targetRadius = Math.max(0.95, Math.min(3.1, camCtrl.targetRadius + e.deltaY * 0.0012));
+        }, { passive: false });
+
+        // Two-finger pinch-to-zoom on touch screens
+        let pinchStartDist = 0;
+        let pinchStartRad = camCtrl.targetRadius;
+        dom.addEventListener('touchstart', (e) => {
+          if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            pinchStartDist = Math.hypot(dx, dy);
+            pinchStartRad = camCtrl.targetRadius;
+            endInteraction();
+          }
+        }, { passive: true });
+
+        dom.addEventListener('touchmove', (e) => {
+          if (e.touches.length === 2 && pinchStartDist > 0) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.hypot(dx, dy);
+            const scale = pinchStartDist / Math.max(20, dist);
+            camCtrl.targetRadius = Math.max(0.95, Math.min(3.1, pinchStartRad * scale));
+          }
+        }, { passive: true });
+      }
+
+      function setTargetPill(text) {
+        const el = document.getElementById('active-target-pill');
+        if (el) el.textContent = text;
+      }
+
+      function updateModePillLabel() {
+        const labels = {
+          auto: 'Auto Detect',
+          stockings: 'Nylon Pull',
+          skirt: 'Skirt Drape',
+          orbit: 'Camera Orbit'
+        };
+        setTargetPill(labels[state.mode] || 'Auto Detect');
+      }
+
+      /**
+       * ========================================================================
+       * 8. STUDIO UI CONTROL BINDINGS
+       * ========================================================================
+       */
+
+      function updatePanelVisibility() {
+        const panel = document.getElementById('control-panel');
+        if (!panel) return;
+        if (state.panelOpen) {
+          panel.classList.remove('opacity-0', 'pointer-events-none', 'translate-x-4');
+          panel.classList.add('opacity-100', 'pointer-events-auto', 'translate-x-0');
+        } else {
+          panel.classList.add('opacity-0', 'pointer-events-none', 'translate-x-4');
+          panel.classList.remove('opacity-100', 'pointer-events-auto', 'translate-x-0');
+        }
+      }
+
+      function setupUIControls() {
+        // Drawer toggle
+        document.getElementById('toggle-panel-btn').addEventListener('click', () => {
+          state.panelOpen = !state.panelOpen;
+          updatePanelVisibility();
+        });
+
+        // Mode buttons
+        const modeBtns = document.querySelectorAll('.mode-btn');
+        modeBtns.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.mode = btn.dataset.mode;
+            modeBtns.forEach((b) => {
+              const active = b.dataset.mode === state.mode;
+              b.className = active
+                ? 'mode-btn py-1.5 rounded-lg text-[11px] font-medium bg-white text-zinc-950 transition'
+                : 'mode-btn py-1.5 rounded-lg text-[11px] font-medium text-zinc-300 hover:bg-white/10 transition';
+            });
+            updateModePillLabel();
+          });
+        });
+
+        // Hosiery Style buttons (Thigh-High vs Full Sheer Pantyhose)
+        const hosieryBtns = document.querySelectorAll('.hosiery-btn');
+        hosieryBtns.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.hosieryStyle = btn.dataset.hosiery;
+            hosieryBtns.forEach((b) => {
+              const active = b.dataset.hosiery === state.hosieryStyle;
+              b.className = active
+                ? 'hosiery-btn px-2 py-0.5 rounded-md text-[10px] font-medium bg-white/15 text-white'
+                : 'hosiery-btn px-2 py-0.5 rounded-md text-[10px] font-medium text-zinc-400 hover:text-white';
+            });
+
+            const isThigh = state.hosieryStyle === 'thigh';
+            scene.userData.nylonMat.uniforms.uIsThighHigh.value = isThigh ? 1.0 : 0.0;
+            scene.userData.skinMat.uniforms.uHosieryStyle.value = isThigh ? 0.0 : 1.0;
+
+            const newTop = isThigh ? 0.80 : 0.92;
+            state.stockingTargetTop = newTop;
+            state.stockingAutoAnim = true;
+            stockingSolvers.forEach((s) => { s.targetTopY = newTop; });
+            showToast(isThigh ? 'Switched to Thigh-High Stockings' : 'Switched to Full Sheer Pantyhose');
+          });
+        });
+
+        // Denier Slider
+        const denierSlider = document.getElementById('denier-slider');
+        denierSlider.addEventListener('input', (e) => {
+          state.denier = parseFloat(e.target.value);
+          document.getElementById('denier-val').textContent = `${state.denier}D`;
+          scene.userData.nylonMat.uniforms.uDenier.value = state.denier;
+        });
+
+        // Anisotropic Sheen Slider
+        const sheenSlider = document.getElementById('sheen-slider');
+        sheenSlider.addEventListener('input', (e) => {
+          const pct = parseFloat(e.target.value);
+          state.sheen = pct / 100;
+          document.getElementById('sheen-val').textContent = `${pct}%`;
+          scene.userData.nylonMat.uniforms.uSheen.value = state.sheen;
+        });
+
+        // Slide Off / Reapply Stockings
+        document.getElementById('btn-remove-stockings').addEventListener('click', () => {
+          state.stockingAutoAnim = true;
+          stockingSolvers.forEach((s) => { s.targetTopY = 0.145; });
+          showToast('Sliding stockings down smoothly');
+        });
+
+        document.getElementById('btn-reapply-stockings').addEventListener('click', () => {
+          const target = state.hosieryStyle === 'thigh' ? 0.80 : 0.92;
+          state.stockingAutoAnim = true;
+          stockingSolvers.forEach((s) => { s.targetTopY = target; });
+          showToast('Reapplying stockings with smooth tension');
+        });
+
+        // Skirt Length buttons (Mini vs Knee)
+        const lengthBtns = document.querySelectorAll('.length-btn');
+        lengthBtns.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.skirtLength = btn.dataset.length;
+            lengthBtns.forEach((b) => {
+              const active = b.dataset.length === state.skirtLength;
+              b.className = active
+                ? 'length-btn px-2 py-0.5 rounded-md text-[10px] font-medium bg-white/15 text-white'
+                : 'length-btn px-2 py-0.5 rounded-md text-[10px] font-medium text-zinc-400 hover:text-white';
+            });
+            skirtSolver.rebuildGeometry(state.skirtLength);
+            showToast(state.skirtLength === 'mini' ? 'Fitted Mini Skirt' : 'Fitted Knee-Length Skirt');
+          });
+        });
+
+        // Skirt Size buttons (XS, S, M, L, XL)
+        const sizeLabels = {
+          XS: 'XS (Bodycon)',
+          S: 'S (Slim)',
+          M: 'M (Fitted)',
+          L: 'L (Relaxed)',
+          XL: 'XL (Flowy)'
+        };
+        const sizeBtns = document.querySelectorAll('.size-btn');
+        sizeBtns.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.skirtSize = btn.dataset.size;
+            sizeBtns.forEach((b) => {
+              const active = b.dataset.size === state.skirtSize;
+              b.className = active
+                ? 'size-btn py-1 rounded-lg text-[11px] font-medium bg-white text-zinc-950 transition'
+                : 'size-btn py-1 rounded-lg text-[11px] font-medium text-zinc-300 hover:bg-white/10 transition';
+            });
+            document.getElementById('skirt-size-val').textContent = sizeLabels[state.skirtSize] || state.skirtSize;
+            skirtSolver.rebuildGeometry(state.skirtLength, state.skirtSize);
+            showToast(`Skirt Size: ${sizeLabels[state.skirtSize]}`);
+          });
+        });
+
+        // Skirt Fabric buttons
+        const fabricBtns = document.querySelectorAll('.fabric-btn');
+        fabricBtns.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.skirtFabric = btn.dataset.fabric;
+            fabricBtns.forEach((b) => {
+              const active = b.dataset.fabric === state.skirtFabric;
+              b.className = active
+                ? 'fabric-btn py-1.5 rounded-lg text-[11px] font-medium bg-white/15 text-white border border-white/15 transition'
+                : 'fabric-btn py-1.5 rounded-lg text-[11px] font-medium text-zinc-300 bg-white/5 hover:bg-white/10 border border-white/5 transition';
+            });
+            skirtSolver.applyFabricPreset(state.skirtFabric);
+            showToast(`Fabric: ${btn.textContent}`);
+          });
+        });
+
+        // Skirt Color Swatches
+        const swatches = document.querySelectorAll('.color-swatch');
+        swatches.forEach((sw) => {
+          sw.addEventListener('click', () => {
+            state.skirtColor = sw.dataset.color;
+            skirtSolver.setColor(state.skirtColor);
+            swatches.forEach((s) => {
+              s.className = s === sw
+                ? 'color-swatch w-5 h-5 rounded-full ring-2 ring-white ring-offset-2 ring-offset-zinc-900'
+                : 'color-swatch w-5 h-5 rounded-full ring-1 ring-white/20 hover:scale-110 transition';
+            });
+          });
+        });
+
+        // Skirt Sway & Reset
+        document.getElementById('btn-sway-skirt').addEventListener('click', () => {
+          skirtSolver.applySwayImpulse();
+        });
+
+        document.getElementById('btn-reset-skirt').addEventListener('click', () => {
+          skirtSolver.rebuildGeometry(state.skirtLength);
+          showToast('Skirt drape reset');
+        });
+
+        // Wind & Gravity Sliders
+        document.getElementById('wind-slider').addEventListener('input', (e) => {
+          const pct = parseFloat(e.target.value);
+          state.windStrength = pct / 100;
+          document.getElementById('wind-val').textContent = `${pct}%`;
+        });
+
+        document.getElementById('gravity-slider').addEventListener('input', (e) => {
+          state.gravityScale = parseFloat(e.target.value);
+          document.getElementById('gravity-val').textContent = `${state.gravityScale.toFixed(1)}x`;
+        });
+
+        // Master Reset All
+        document.getElementById('btn-reset-all').addEventListener('click', () => {
+          const topTarget = state.hosieryStyle === 'thigh' ? 0.80 : 0.92;
+          state.stockingAutoAnim = false;
+          stockingSolvers.forEach((s) => s.reset(topTarget));
+          skirtSolver.rebuildGeometry(state.skirtLength);
+          camCtrl.targetTheta = 0.28;
+          camCtrl.targetPhi = 1.38;
+          camCtrl.targetRadius = 1.88;
+          showToast('Scene, garments & camera reset');
+        });
+      }
+
+      /**
+       * ========================================================================
+       * 9. CAMERA DAMPING, RESIZE HANDLER & 60 FPS ANIMATION LOOP
+       * ========================================================================
+       */
+
+      function updateCameraPosition(immediate = false) {
+        const lerp = immediate ? 1.0 : 0.11;
+        camCtrl.theta += (camCtrl.targetTheta - camCtrl.theta) * lerp;
+        camCtrl.phi += (camCtrl.targetPhi - camCtrl.phi) * lerp;
+        camCtrl.radius += (camCtrl.targetRadius - camCtrl.radius) * lerp;
+
+        const sinPhi = Math.sin(camCtrl.phi);
+        camera.position.set(
+          camCtrl.target.x + camCtrl.radius * sinPhi * Math.sin(camCtrl.theta),
+          camCtrl.target.y + camCtrl.radius * Math.cos(camCtrl.phi),
+          camCtrl.target.z + camCtrl.radius * sinPhi * Math.cos(camCtrl.theta)
+        );
+        camera.lookAt(camCtrl.target);
+      }
+
+      function handleResize() {
+        if (!renderer || !camera || !viewportEl) return;
+        const w = viewportEl.clientWidth || window.innerWidth;
+        const h = viewportEl.clientHeight || window.innerHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        const dt = clock.getDelta();
+
+        // Update FPS badge smoothly every 0.4s
+        frameCount++;
+        fpsAccum += dt;
+        if (fpsAccum >= 0.4) {
+          const fps = Math.round(frameCount / fpsAccum);
+          const badge = document.getElementById('fps-badge');
+          if (badge) badge.textContent = `${fps} FPS`;
+          frameCount = 0;
+          fpsAccum = 0;
+        }
+
+        // 1. Step elastic nylon stocking solvers
+        for (let i = 0; i < stockingSolvers.length; i++) {
+          stockingSolvers[i].step(dt);
+        }
+
+        // Sync stocking top cuff heights into Skin SSS shader for realistic compression shading
+        if (scene.userData.skinMat && stockingSolvers.length === 2) {
+          scene.userData.skinMat.uniforms.uStockingTopL.value = stockingSolvers[0].topY;
+          scene.userData.skinMat.uniforms.uStockingTopR.value = stockingSolvers[1].topY;
+        }
+
+        // 2. Step Verlet skirt cloth solver
+        if (skirtSolver) {
+          skirtSolver.step(dt, true);
+        }
+
+        // 3. Smooth camera orbit update & render
+        updateCameraPosition(false);
+        renderer.render(scene, camera);
+      }
+
+      // Start initialization and animation loop once DOM and CDN scripts have loaded
+      window.onload = function () {
+        initScene();
+        animate();
+      };
+    })();
+  </script>
+</body>
+</html>
